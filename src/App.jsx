@@ -903,9 +903,192 @@ return (
       <Download className="w-4 h-4" /> Export CSV
     </button>
   </div>
+
+  <HistoricalImport />
 </div>
 ```
 
+);
+}
+
+// ––––– HISTORICAL IMPORT (one-time) –––––
+const HISTORICAL_ENTRIES = [
+// January 2026
+{ date: “2026-01-20”, income: 50000.54, expenses: 33000 },
+{ date: “2026-01-21”, income: 22700, expenses: 35000 },
+{ date: “2026-01-22”, income: 68900, expenses: 80000 },
+{ date: “2026-01-23”, income: 41000, expenses: 5000 },
+{ date: “2026-01-24”, income: 44500, expenses: 58000 },
+{ date: “2026-01-25”, income: 102000, expenses: 0 },
+{ date: “2026-01-26”, income: 68050, expenses: 40000 },
+{ date: “2026-01-27”, income: 73000, expenses: 60000 },
+{ date: “2026-01-28”, income: 107000, expenses: 60000 },
+{ date: “2026-01-29”, income: 44000, expenses: 50000 },
+{ date: “2026-01-30”, income: 156020, expenses: 90000 },
+{ date: “2026-01-31”, income: 227000, expenses: 267000 },
+// February 2026
+{ date: “2026-02-01”, income: 331000, expenses: 1060000 },
+{ date: “2026-02-02”, income: 187200, expenses: 0 },
+{ date: “2026-02-03”, income: 150000, expenses: 211000 },
+{ date: “2026-02-04”, income: 217000, expenses: 19480 },
+{ date: “2026-02-05”, income: 130002, expenses: 30000 },
+{ date: “2026-02-06”, income: 179760, expenses: 130000 },
+{ date: “2026-02-07”, income: 173685, expenses: 9790 },
+{ date: “2026-02-08”, income: 230000, expenses: 60000 },
+{ date: “2026-02-09”, income: 609000, expenses: 55000 },
+{ date: “2026-02-10”, income: 793700, expenses: 158000 },
+{ date: “2026-02-11”, income: 546001, expenses: 537240 },
+{ date: “2026-02-12”, income: 346000, expenses: 500000 },
+{ date: “2026-02-13”, income: 311000, expenses: 180000 },
+{ date: “2026-02-14”, income: 292000, expenses: 198000 },
+{ date: “2026-02-15”, income: 348000, expenses: 275000 },
+{ date: “2026-02-16”, income: 334000, expenses: 198190 },
+{ date: “2026-02-17”, income: 283000, expenses: 300000 },
+{ date: “2026-02-18”, income: 1882000, expenses: 1515000 },
+{ date: “2026-02-19”, income: 120000, expenses: 0 },
+{ date: “2026-02-20”, income: 227892, expenses: 190000 },
+{ date: “2026-02-21”, income: 126901, expenses: 0 },
+{ date: “2026-02-22”, income: 231000, expenses: 200000 },
+{ date: “2026-02-23”, income: 176500, expenses: 100000 },
+{ date: “2026-02-24”, income: 183000, expenses: 30000 },
+{ date: “2026-02-25”, income: 118000, expenses: 20000 },
+{ date: “2026-02-26”, income: 148000, expenses: 10000 },
+{ date: “2026-02-27”, income: 145100, expenses: 220000 },
+{ date: “2026-02-28”, income: 120250, expenses: 51600 },
+// March 2026
+{ date: “2026-03-01”, income: 150032, expenses: 158000 },
+{ date: “2026-03-02”, income: 114500, expenses: 0 },
+{ date: “2026-03-03”, income: 149200, expenses: 250000 },
+{ date: “2026-03-04”, income: 53800, expenses: 85000 },
+{ date: “2026-03-05”, income: 72000, expenses: 30000 },
+{ date: “2026-03-06”, income: 113000, expenses: 32000 },
+{ date: “2026-03-07”, income: 130000, expenses: 36000 },
+{ date: “2026-03-08”, income: 100000, expenses: 23000 },
+{ date: “2026-03-09”, income: 152900, expenses: 100000 },
+{ date: “2026-03-10”, income: 118300, expenses: 44000 },
+{ date: “2026-03-11”, income: 48780, expenses: 10000 },
+{ date: “2026-03-12”, income: 48000, expenses: 10000 },
+{ date: “2026-03-13”, income: 96000, expenses: 181100 },
+{ date: “2026-03-14”, income: 47000, expenses: 13000 },
+{ date: “2026-03-15”, income: 67800, expenses: 20000 },
+{ date: “2026-03-16”, income: 24300, expenses: 50000 },
+{ date: “2026-03-17”, income: 57380, expenses: 25000 },
+{ date: “2026-03-18”, income: 110200, expenses: 10000 },
+{ date: “2026-03-19”, income: 212000, expenses: 0 },
+{ date: “2026-03-20”, income: 105900, expenses: 230000 },
+{ date: “2026-03-21”, income: 101000, expenses: 0 },
+{ date: “2026-03-22”, income: 138000, expenses: 40000 },
+{ date: “2026-03-23”, income: 99000, expenses: 0 },
+{ date: “2026-03-24”, income: 115000, expenses: 20000 },
+{ date: “2026-03-25”, income: 74000, expenses: 120000 },
+{ date: “2026-03-26”, income: 143800, expenses: 10000 },
+{ date: “2026-03-27”, income: 350800, expenses: 161000 },
+{ date: “2026-03-28”, income: 417928, expenses: 332000 },
+{ date: “2026-03-29”, income: 493000, expenses: 40000 },
+{ date: “2026-03-30”, income: 398000, expenses: 136000 },
+{ date: “2026-03-31”, income: 118000, expenses: 95000 },
+// April 2026
+{ date: “2026-04-01”, income: 139073, expenses: 55000 },
+{ date: “2026-04-02”, income: 235000, expenses: 30000 },
+{ date: “2026-04-03”, income: 200450, expenses: 89000 },
+{ date: “2026-04-04”, income: 284000, expenses: 20000 },
+{ date: “2026-04-05”, income: 230800, expenses: 70000 },
+{ date: “2026-04-06”, income: 181800, expenses: 95000 },
+{ date: “2026-04-07”, income: 302800, expenses: 130000 },
+{ date: “2026-04-08”, income: 342201, expenses: 20000 },
+{ date: “2026-04-09”, income: 280016, expenses: 112000 },
+{ date: “2026-04-10”, income: 92000, expenses: 25000 },
+{ date: “2026-04-11”, income: 92000, expenses: 40000 },
+{ date: “2026-04-12”, income: 203500, expenses: 20000 },
+{ date: “2026-04-13”, income: 58000, expenses: 0 },
+{ date: “2026-04-14”, income: 22000, expenses: 188400 },
+{ date: “2026-04-15”, income: 43000, expenses: 240718 },
+{ date: “2026-04-16”, income: 70081, expenses: 0 },
+{ date: “2026-04-17”, income: 0, expenses: 0 },
+{ date: “2026-04-18”, income: 45000, expenses: 0 },
+{ date: “2026-04-19”, income: 27000, expenses: 43000 },
+{ date: “2026-04-20”, income: 22000, expenses: 25000 },
+{ date: “2026-04-21”, income: 15000, expenses: 27000 },
+{ date: “2026-04-22”, income: 87000, expenses: 24000 },
+{ date: “2026-04-23”, income: 120100, expenses: 10000 },
+{ date: “2026-04-24”, income: 10000, expenses: 150000 },
+{ date: “2026-04-25”, income: 75000, expenses: 0 },
+{ date: “2026-04-26”, income: 48000, expenses: 0 },
+{ date: “2026-04-27”, income: 38000, expenses: 0 },
+{ date: “2026-04-28”, income: 110000, expenses: 0 },
+{ date: “2026-04-29”, income: 73000, expenses: 40000 },
+{ date: “2026-04-30”, income: 267000, expenses: 77000 },
+// May 2026 (up to May 4)
+{ date: “2026-05-01”, income: 160000, expenses: 306000 },
+{ date: “2026-05-02”, income: 229300, expenses: 75000 },
+{ date: “2026-05-03”, income: 139500, expenses: 60000 },
+{ date: “2026-05-04”, income: 197000, expenses: 10000 },
+];
+
+function HistoricalImport() {
+const [status, setStatus] = useState(””);
+const [running, setRunning] = useState(false);
+const [progress, setProgress] = useState(0);
+
+const runImport = async () => {
+if (!confirm(`Import ${HISTORICAL_ENTRIES.length} historical entries (Jan 20 – May 4, 2026)? Existing dates will be overwritten.`)) return;
+setRunning(true);
+setStatus(“Starting…”);
+setProgress(0);
+
+```
+let success = 0, failed = 0;
+for (let i = 0; i < HISTORICAL_ENTRIES.length; i++) {
+  const e = HISTORICAL_ENTRIES[i];
+  const entry = {
+    id: e.date,
+    date: e.date,
+    income: e.income,
+    expenses: e.expenses,
+    marketing: 0,
+    profit: e.income - e.expenses,
+    partner: "Historical Import",
+    notes: "Imported from balance sheet",
+    timestamp: new Date().toISOString(),
+  };
+  try {
+    await setDoc(doc(db, "entries", e.date), entry);
+    success++;
+  } catch (err) {
+    failed++;
+    console.error(`Failed ${e.date}:`, err);
+  }
+  setProgress(((i + 1) / HISTORICAL_ENTRIES.length) * 100);
+  setStatus(`Importing… ${i + 1}/${HISTORICAL_ENTRIES.length}`);
+}
+setStatus(`✅ Done — ${success} imported${failed > 0 ? `, ${failed} failed` : ""}`);
+setRunning(false);
+```
+
+};
+
+return (
+<div className="bg-amber-400/5 border border-amber-400/20 rounded-2xl p-6 md:p-8 max-w-xl">
+<h3 className=“text-xl font-bold text-white mb-1” style={{ fontFamily: “‘Playfair Display’, serif” }}>Import Historical Data</h3>
+<p className="text-xs text-zinc-400 mb-6">
+One-time import of {HISTORICAL_ENTRIES.length} entries from Jan 20 – May 4, 2026.
+Marketing is set to 0 (no marketing data in source).
+Run once, then this section can be removed.
+</p>
+<button
+onClick={runImport}
+disabled={running}
+className="px-4 py-3 rounded-lg bg-amber-400/20 border border-amber-400/40 text-amber-300 text-sm font-medium hover:bg-amber-400/30 disabled:opacity-50"
+>
+{running ? “Importing…” : “Import Historical Data”}
+</button>
+{running && (
+<div className="mt-4 h-2 bg-black/40 rounded-full overflow-hidden">
+<div className=“h-full bg-amber-400 transition-all” style={{ width: `${progress}%` }} />
+</div>
+)}
+{status && <p className="text-sm text-zinc-300 mt-3">{status}</p>}
+</div>
 );
 }
 
