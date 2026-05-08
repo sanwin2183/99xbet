@@ -6,5 +6,5 @@ import react from '@vitejs/plugin-react'
 // then base should be '/99xbet-tracker/'
 export default defineConfig({
   plugins: [react()],
-  base: '/ledger/',
+  base: '/',
 })
