@@ -4,7 +4,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   collection, doc, setDoc, deleteDoc, onSnapshot, getDoc,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
+import { signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
 // ---------- CONFIG ----------
 const DEFAULT_PASSCODE = "99xbet2026";
@@ -91,13 +92,68 @@ function buildDayMap(legacyEntries, transactions) {
 }
 
 // ---------- AUTH ----------
+// Lockout configuration
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+const ATTEMPTS_KEY = "99xbet:attempts";
+const LOCKOUT_KEY = "99xbet:lockedUntil";
+
 function PasscodeScreen({ onUnlock }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [lockedUntil, setLockedUntil] = useState(() => {
+    const stored = parseInt(localStorage.getItem(LOCKOUT_KEY) || "0", 10);
+    return stored > Date.now() ? stored : 0;
+  });
+  const [now, setNow] = useState(Date.now());
+
+  // Tick every second while locked, so the countdown updates and unlocks itself when time's up
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const interval = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lockedUntil) {
+        // Lock expired — clear it
+        localStorage.removeItem(LOCKOUT_KEY);
+        localStorage.removeItem(ATTEMPTS_KEY);
+        setLockedUntil(0);
+        setError("");
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockedUntil]);
+
+  const isLocked = lockedUntil > now;
+  const remaining = Math.max(0, lockedUntil - now);
+  const remainingMin = Math.floor(remaining / 60000);
+  const remainingSec = Math.floor((remaining % 60000) / 1000);
+
+  const recordFailedAttempt = () => {
+    const current = parseInt(localStorage.getItem(ATTEMPTS_KEY) || "0", 10);
+    const newCount = current + 1;
+    if (newCount >= MAX_ATTEMPTS) {
+      const lockTime = Date.now() + LOCKOUT_MS;
+      localStorage.setItem(LOCKOUT_KEY, String(lockTime));
+      localStorage.setItem(ATTEMPTS_KEY, String(newCount));
+      setLockedUntil(lockTime);
+      setError(`Too many failed attempts. Locked for 15 minutes.`);
+    } else {
+      localStorage.setItem(ATTEMPTS_KEY, String(newCount));
+      const remaining = MAX_ATTEMPTS - newCount;
+      setError(`Incorrect passcode. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining before lockout.`);
+    }
+  };
+
+  const resetAttempts = () => {
+    localStorage.removeItem(ATTEMPTS_KEY);
+    localStorage.removeItem(LOCKOUT_KEY);
+  };
 
   const handleSubmit = async () => {
+    if (isLocked) return;
     setLoading(true);
     setError("");
     try {
@@ -111,16 +167,28 @@ function PasscodeScreen({ onUnlock }) {
         await setDoc(CONFIG_DOC, { passcode: DEFAULT_PASSCODE });
       }
 
-      if (code === editorPasscode) {
+      let role = null;
+      if (code === editorPasscode) role = "editor";
+      else if (viewerPasscode && code === viewerPasscode) role = "viewer";
+
+      if (role) {
+        // Passcode matched — now sign in anonymously to Firebase Auth.
+        // Without this, our locked-down Firestore rules will reject all reads/writes.
+        try {
+          await signInAnonymously(auth);
+        } catch (authErr) {
+          console.error("Auth failed:", authErr);
+          setError("Authentication failed. Please try again.");
+          setLoading(false);
+          return;
+        }
+        // Success — clear failure counter, mark unlocked, route by role
+        resetAttempts();
         sessionStorage.setItem("99xbet:unlocked", "1");
-        sessionStorage.setItem("99xbet:role", "editor");
-        onUnlock("editor");
-      } else if (viewerPasscode && code === viewerPasscode) {
-        sessionStorage.setItem("99xbet:unlocked", "1");
-        sessionStorage.setItem("99xbet:role", "viewer");
-        onUnlock("viewer");
+        sessionStorage.setItem("99xbet:role", role);
+        onUnlock(role);
       } else {
-        setError("Incorrect passcode");
+        recordFailedAttempt();
         setCode("");
       }
     } catch (e) {
@@ -155,11 +223,12 @@ function PasscodeScreen({ onUnlock }) {
             <input
               type={show ? "text" : "password"}
               value={code}
-              onChange={(e) => { setCode(e.target.value); setError(""); }}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleSubmit()}
-              placeholder="Enter passcode"
-              className="w-full bg-black/40 border border-zinc-800 focus:border-amber-400/60 rounded-xl px-4 py-4 text-white text-lg tracking-widest outline-none transition-colors"
-              autoFocus
+              onChange={(e) => { setCode(e.target.value); if (!isLocked) setError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && !loading && !isLocked && handleSubmit()}
+              placeholder={isLocked ? "Locked" : "Enter passcode"}
+              disabled={isLocked}
+              className="w-full bg-black/40 border border-zinc-800 focus:border-amber-400/60 rounded-xl px-4 py-4 text-white text-lg tracking-widest outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              autoFocus={!isLocked}
             />
             <button
               onClick={() => setShow(!show)}
@@ -169,15 +238,25 @@ function PasscodeScreen({ onUnlock }) {
             </button>
           </div>
 
-          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+          {isLocked ? (
+            <div className="mt-4 p-4 rounded-lg bg-rose-400/10 border border-rose-400/30 text-center">
+              <p className="text-rose-300 text-sm font-semibold mb-1">Locked due to too many failed attempts</p>
+              <p className="text-rose-400 text-2xl font-bold tabular-nums" style={{ fontFamily: "'Playfair Display', serif" }}>
+                {String(remainingMin).padStart(2, "0")}:{String(remainingSec).padStart(2, "0")}
+              </p>
+              <p className="text-zinc-500 text-xs mt-1">until next attempt allowed</p>
+            </div>
+          ) : (
+            error && <p className="text-rose-400 text-sm mt-3">{error}</p>
+          )}
 
           <button
             onClick={handleSubmit}
-            disabled={loading}
-            className="w-full mt-6 py-4 rounded-xl font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+            disabled={loading || isLocked}
+            className="w-full mt-6 py-4 rounded-xl font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: "linear-gradient(135deg, #d4af37 0%, #f4d65f 100%)" }}
           >
-            {loading ? "Connecting…" : "Unlock Dashboard"}
+            {isLocked ? "Locked" : loading ? "Connecting…" : "Unlock Dashboard"}
           </button>
 
           <p className="text-xs text-zinc-600 text-center mt-6">
@@ -1439,6 +1518,8 @@ function Settings({ entries }) {
 export default function App() {
   const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("99xbet:unlocked") === "1");
   const [role, setRole] = useState(() => sessionStorage.getItem("99xbet:role") || "editor");
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
   const [legacyEntries, setLegacyEntries] = useState([]);
   const [transactions, setTransactions] = useState([]);
   // Viewers default to dashboard; editors keep "entry" as default
@@ -1449,6 +1530,24 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const isViewer = role === "viewer";
+
+  // Track Firebase Auth state. Without an authenticated user, our locked-down
+  // Firestore rules will reject reads/writes — so we wait until we have one
+  // before rendering anything that reads data.
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      // If sessionStorage says unlocked but Firebase has no user (e.g., session
+      // restored from old build before auth was added), force re-login.
+      if (sessionStorage.getItem("99xbet:unlocked") === "1" && !user) {
+        sessionStorage.removeItem("99xbet:unlocked");
+        sessionStorage.removeItem("99xbet:role");
+        setUnlocked(false);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const goOnline = () => setOnline(true);
@@ -1462,7 +1561,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!unlocked) return;
+    // Need both: passcode-unlocked AND Firebase-authenticated
+    if (!unlocked || !authUser) return;
     setLoading(true);
     let entriesLoaded = false, txLoaded = false;
     const checkDone = () => { if (entriesLoaded && txLoaded) setLoading(false); };
@@ -1498,7 +1598,7 @@ export default function App() {
       }
     );
     return () => { unsub1(); unsub2(); };
-  }, [unlocked]);
+  }, [unlocked, authUser]);
 
   // Save a single transaction (the new way)
   const saveTransaction = async (tx) => {
@@ -1514,13 +1614,26 @@ export default function App() {
     await deleteDoc(doc(db, "entries", id));
   };
 
-  const handleLock = () => {
+  const handleLock = async () => {
     sessionStorage.removeItem("99xbet:unlocked");
     sessionStorage.removeItem("99xbet:role");
     setUnlocked(false);
     setRole("editor");
     setTab("entry");
+    // Sign out of Firebase Auth too — without this, a curious partner could
+    // re-enter the URL and re-skip the passcode (since auth state would persist)
+    try { await signOut(auth); } catch (e) { console.error(e); }
   };
+
+  // Wait for Firebase to tell us if we're already authenticated (e.g., page refresh
+  // with valid auth session). Otherwise we'd flash the wrong screen.
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "radial-gradient(ellipse at top, #1a1f2e 0%, #0a0d14 60%)" }}>
+        <div className="text-zinc-500 text-sm">Loading…</div>
+      </div>
+    );
+  }
 
   if (!unlocked) return <PasscodeScreen onUnlock={(r) => {
     setRole(r);
