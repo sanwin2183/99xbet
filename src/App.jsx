@@ -261,7 +261,7 @@ function PasscodeScreen({ onUnlock }) {
           {isLocked ? (
             <div className="mt-4 p-4 rounded-lg bg-rose-400/10 border border-rose-400/30 text-center">
               <p className="text-rose-300 text-sm font-semibold mb-1">Locked due to too many failed attempts</p>
-              <p className="text-rose-400 text-2xl font-bold tabular-nums" style={{ fontFamily: "'Playfair Display', serif" }}>
+              <p className="text-rose-400 text-2xl font-semibold tabular-nums">
                 {String(remainingMin).padStart(2, "0")}:{String(remainingSec).padStart(2, "0")}
               </p>
               <p className="text-zinc-500 text-xs mt-1">until next attempt allowed</p>
@@ -603,7 +603,7 @@ function SlipUpload({ onSave, dayMap }) {
                     <span className="text-sm text-zinc-400">
                       Total {isIncome ? "income" : "expenses"} to add
                     </span>
-                    <span className={`text-2xl font-bold ${isIncome ? "text-emerald-400" : "text-rose-400"}`} style={{ fontFamily: "'Playfair Display', serif" }}>
+                    <span className={`text-2xl font-semibold tabular-nums ${isIncome ? "text-emerald-400" : "text-rose-400"}`}>
                       {fmt(totals.sum)}
                     </span>
                   </div>
@@ -859,7 +859,7 @@ function KpiCard({ label, value, sub, accent, icon }) {
           {icon}
         </div>
       </div>
-      <div className="text-xl md:text-2xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>{value}</div>
+      <div className="text-xl md:text-2xl font-semibold text-white tabular-nums">{value}</div>
       {sub && <div className="text-xs text-zinc-500 mt-1">{sub}</div>}
     </div>
   );
@@ -1101,12 +1101,12 @@ function Dashboard({ entries }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-emerald-400/5 border border-emerald-400/20 rounded-2xl p-5">
             <div className="text-xs text-emerald-400 uppercase tracking-wider font-semibold mb-2">Best Day</div>
-            <div className="text-xl md:text-2xl font-bold text-white mb-1" style={{ fontFamily: "'Playfair Display', serif" }}>{fmt(stats.bestDay.profit)}</div>
+            <div className="text-xl md:text-2xl font-semibold text-white tabular-nums mb-1">{fmt(stats.bestDay.profit)}</div>
             <div className="text-xs text-zinc-400">{stats.bestDay.date} · by {stats.bestDay.partner}</div>
           </div>
           <div className="bg-rose-400/5 border border-rose-400/20 rounded-2xl p-5">
             <div className="text-xs text-rose-400 uppercase tracking-wider font-semibold mb-2">Worst Day</div>
-            <div className="text-xl md:text-2xl font-bold text-white mb-1" style={{ fontFamily: "'Playfair Display', serif" }}>{fmt(stats.worstDay.profit)}</div>
+            <div className="text-xl md:text-2xl font-semibold text-white tabular-nums mb-1">{fmt(stats.worstDay.profit)}</div>
             <div className="text-xs text-zinc-400">{stats.worstDay.date} · by {stats.worstDay.partner}</div>
           </div>
         </div>
@@ -1180,10 +1180,10 @@ function History({ entries, onDeleteTransaction, onDeleteLegacy, readOnly = fals
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div className={`text-lg md:text-xl font-bold ${day.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`} style={{ fontFamily: "'Playfair Display', serif" }}>
+                    <div className={`text-lg md:text-xl font-semibold tabular-nums ${day.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                       {fmt(day.profit)}
                     </div>
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-zinc-500 tabular-nums">
                       <span className="text-emerald-400">{fmt(day.income)}</span>
                       <span className="mx-1">·</span>
                       <span className="text-rose-400">{fmt(day.expenses)}</span>
@@ -1398,14 +1398,14 @@ function Monthly({ entries }) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="text-xs text-zinc-500 mb-1">Profit change</div>
-              <div className={`text-lg font-bold ${compare.profitDelta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              <div className={`text-lg font-semibold tabular-nums ${compare.profitDelta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                 {compare.profitDelta >= 0 ? "+" : ""}{fmt(compare.profitDelta)}
                 {compare.profitPct !== null && <span className="text-xs ml-2 text-zinc-500">({compare.profitPct >= 0 ? "+" : ""}{compare.profitPct.toFixed(1)}%)</span>}
               </div>
             </div>
             <div>
               <div className="text-xs text-zinc-500 mb-1">Revenue change</div>
-              <div className={`text-lg font-bold ${compare.incomeDelta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              <div className={`text-lg font-semibold tabular-nums ${compare.incomeDelta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                 {compare.incomeDelta >= 0 ? "+" : ""}{fmt(compare.incomeDelta)}
                 {compare.incomePct !== null && <span className="text-xs ml-2 text-zinc-500">({compare.incomePct >= 0 ? "+" : ""}{compare.incomePct.toFixed(1)}%)</span>}
               </div>
@@ -1448,14 +1448,14 @@ function Monthly({ entries }) {
                     <div className="text-white font-semibold">{monthLabel(m.ym)}</div>
                     <div className="text-xs text-zinc-500">{m.entries.length} days · {mg.toFixed(1)}% margin</div>
                   </div>
-                  <div className={`text-lg font-bold ${m.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`} style={{ fontFamily: "'Playfair Display', serif" }}>
+                  <div className={`text-lg font-semibold tabular-nums ${m.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                     {fmt(m.profit)}
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs mt-3">
-                  <div><span className="text-zinc-500">Rev</span><div className="text-emerald-400 font-medium">{fmt(m.income)}</div></div>
-                  <div><span className="text-zinc-500">Exp</span><div className="text-rose-400 font-medium">{fmt(m.expenses)}</div></div>
-                  <div><span className="text-zinc-500">Mkt</span><div className="text-sky-400 font-medium">{fmt(m.marketing)}</div></div>
+                  <div><span className="text-zinc-500">Rev</span><div className="text-emerald-400 font-medium tabular-nums">{fmt(m.income)}</div></div>
+                  <div><span className="text-zinc-500">Exp</span><div className="text-rose-400 font-medium tabular-nums">{fmt(m.expenses)}</div></div>
+                  <div><span className="text-zinc-500">Mkt</span><div className="text-sky-400 font-medium tabular-nums">{fmt(m.marketing)}</div></div>
                 </div>
               </button>
             );
