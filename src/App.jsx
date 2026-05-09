@@ -9,26 +9,31 @@ import { signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 
 // ---------- CONFIG ----------
 const DEFAULT_PASSCODE = "99xbet2026";
-const CURRENCY_SYMBOL = "K";
+const CURRENCY_SYMBOL = "Kyats";
 const CURRENCY_CODE = "MMK";
 const CONFIG_DOC = doc(db, "config", "main");
 const ENTRIES_COL = collection(db, "entries");
 const TX_COL = collection(db, "transactions");
 
 // ---------- HELPERS ----------
+// Full-number currency formatter — used everywhere except chart Y-axes.
+// Example: fmt(7860000) -> "7,860,000 Kyats"
 const fmt = (n) => {
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   return sign + abs.toLocaleString("en-US", { maximumFractionDigits: 0 }) + " " + CURRENCY_SYMBOL;
 };
 
-const fmtCompact = (n) => {
+// Compact, axis-only formatter — used ONLY on chart Y-axis labels where
+// space is tight. No currency unit (the chart title makes it clear).
+// Example: fmtAxis(7860000) -> "7.86M"
+const fmtAxis = (n) => {
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
-  if (abs >= 1_000_000_000) return sign + (abs / 1_000_000_000).toFixed(2) + "B " + CURRENCY_SYMBOL;
-  if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(2) + "M " + CURRENCY_SYMBOL;
-  if (abs >= 1_000) return sign + (abs / 1_000).toFixed(1) + "K " + CURRENCY_SYMBOL;
-  return sign + abs.toFixed(0) + " " + CURRENCY_SYMBOL;
+  if (abs >= 1_000_000_000) return sign + (abs / 1_000_000_000).toFixed(2) + "B";
+  if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(2) + "M";
+  if (abs >= 1_000) return sign + (abs / 1_000).toFixed(1) + "K";
+  return sign + abs.toFixed(0);
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -792,9 +797,9 @@ function EntryForm({ onSave, dayMap }) {
           <div className="p-3 rounded-lg bg-black/40 border border-zinc-800 text-xs">
             <div className="text-zinc-500 uppercase tracking-wider mb-2">{date} so far</div>
             <div className="grid grid-cols-3 gap-2">
-              <div><span className="text-zinc-500">In:</span> <span className="text-emerald-400 font-medium ml-1">{fmtCompact(day.income)}</span></div>
-              <div><span className="text-zinc-500">Exp:</span> <span className="text-rose-400 font-medium ml-1">{fmtCompact(day.expenses)}</span></div>
-              <div><span className="text-zinc-500">Mkt:</span> <span className="text-sky-400 font-medium ml-1">{fmtCompact(day.marketing)}</span></div>
+              <div><span className="text-zinc-500">In:</span> <span className="text-emerald-400 font-medium ml-1">{fmt(day.income)}</span></div>
+              <div><span className="text-zinc-500">Exp:</span> <span className="text-rose-400 font-medium ml-1">{fmt(day.expenses)}</span></div>
+              <div><span className="text-zinc-500">Mkt:</span> <span className="text-sky-400 font-medium ml-1">{fmt(day.marketing)}</span></div>
             </div>
             <div className="mt-2 pt-2 border-t border-zinc-800 flex justify-between">
               <span className="text-zinc-400">P/L:</span>
@@ -987,10 +992,10 @@ function Dashboard({ entries }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Profit" value={fmtCompact(stats.totalProfit)} sub={`${stats.margin.toFixed(1)}% margin`} accent={stats.totalProfit >= 0 ? "#10b981" : "#f43f5e"} icon={<DollarSign className="w-4 h-4" />} />
-        <KpiCard label="Total Revenue" value={fmtCompact(stats.totalIncome)} sub={`${entries.length} entries`} accent="#d4af37" icon={<TrendingUp className="w-4 h-4" />} />
-        <KpiCard label="Total Costs" value={fmtCompact(stats.totalExpenses + stats.totalMarketing)} sub={`Mkt: ${fmtCompact(stats.totalMarketing)}`} accent="#f43f5e" icon={<TrendingDown className="w-4 h-4" />} />
-        <KpiCard label="Last 7 Days" value={fmtCompact(stats.sum7)} sub="Net P/L" accent="#0ea5e9" icon={<Calendar className="w-4 h-4" />} />
+        <KpiCard label="Total Profit" value={fmt(stats.totalProfit)} sub={`${stats.margin.toFixed(1)}% margin`} accent={stats.totalProfit >= 0 ? "#10b981" : "#f43f5e"} icon={<DollarSign className="w-4 h-4" />} />
+        <KpiCard label="Total Revenue" value={fmt(stats.totalIncome)} sub={`${entries.length} entries`} accent="#d4af37" icon={<TrendingUp className="w-4 h-4" />} />
+        <KpiCard label="Total Costs" value={fmt(stats.totalExpenses + stats.totalMarketing)} sub={`Mkt: ${fmt(stats.totalMarketing)}`} accent="#f43f5e" icon={<TrendingDown className="w-4 h-4" />} />
+        <KpiCard label="Last 7 Days" value={fmt(stats.sum7)} sub="Net P/L" accent="#0ea5e9" icon={<Calendar className="w-4 h-4" />} />
       </div>
 
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
@@ -1009,7 +1014,7 @@ function Dashboard({ entries }) {
               </defs>
               <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#71717a" fontSize={11} />
-              <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtCompact} />
+              <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtAxis} />
               <Tooltip
                 contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
                 labelStyle={{ color: "#a1a1aa" }}
@@ -1031,7 +1036,7 @@ function Dashboard({ entries }) {
             <BarChart data={stats.last30Data}>
               <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#71717a" fontSize={11} />
-              <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtCompact} />
+              <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtAxis} />
               <Tooltip content={<DailyPLTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
               <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
                 {stats.last30Data.map((d, i) => (
@@ -1054,7 +1059,7 @@ function Dashboard({ entries }) {
               <BarChart data={stats.monthlyData}>
                 <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
                 <XAxis dataKey="label" stroke="#71717a" fontSize={11} />
-                <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtCompact} />
+                <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtAxis} />
                 <Tooltip content={<MonthlyPLTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
                 <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
                   {stats.monthlyData.map((d, i) => (
@@ -1078,7 +1083,7 @@ function Dashboard({ entries }) {
               <BarChart data={stats.monthlyData}>
                 <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
                 <XAxis dataKey="label" stroke="#71717a" fontSize={11} />
-                <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtCompact} />
+                <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtAxis} />
                 <Tooltip
                   contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
                   labelStyle={{ color: "#fafafa", fontWeight: 600 }}
@@ -1176,16 +1181,16 @@ function History({ entries, onDeleteTransaction, onDeleteLegacy, readOnly = fals
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className={`text-lg md:text-xl font-bold ${day.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`} style={{ fontFamily: "'Playfair Display', serif" }}>
-                      {fmtCompact(day.profit)}
+                      {fmt(day.profit)}
                     </div>
                     <div className="text-xs text-zinc-500">
-                      <span className="text-emerald-400">{fmtCompact(day.income)}</span>
+                      <span className="text-emerald-400">{fmt(day.income)}</span>
                       <span className="mx-1">·</span>
-                      <span className="text-rose-400">{fmtCompact(day.expenses)}</span>
+                      <span className="text-rose-400">{fmt(day.expenses)}</span>
                       {day.marketing > 0 && (
                         <>
                           <span className="mx-1">·</span>
-                          <span className="text-sky-400">{fmtCompact(day.marketing)}</span>
+                          <span className="text-sky-400">{fmt(day.marketing)}</span>
                         </>
                       )}
                     </div>
@@ -1233,9 +1238,9 @@ function History({ entries, onDeleteTransaction, onDeleteLegacy, readOnly = fals
                           <div>
                             <div className="text-zinc-400 mb-1">Imported summary (also for this day)</div>
                             <div className="text-zinc-500">
-                              In: {fmtCompact(day.income - day.transactions.filter(t => t.kind === "income").reduce((s, t) => s + t.amount, 0))} ·
-                              Exp: {fmtCompact(day.expenses - day.transactions.filter(t => t.kind === "expense").reduce((s, t) => s + t.amount, 0))} ·
-                              Mkt: {fmtCompact(day.marketing - day.transactions.filter(t => t.kind === "marketing").reduce((s, t) => s + t.amount, 0))}
+                              In: {fmt(day.income - day.transactions.filter(t => t.kind === "income").reduce((s, t) => s + t.amount, 0))} ·
+                              Exp: {fmt(day.expenses - day.transactions.filter(t => t.kind === "expense").reduce((s, t) => s + t.amount, 0))} ·
+                              Mkt: {fmt(day.marketing - day.transactions.filter(t => t.kind === "marketing").reduce((s, t) => s + t.amount, 0))}
                             </div>
                           </div>
                           {!readOnly && (confirmDayId === day.date ? (
@@ -1381,10 +1386,10 @@ function Monthly({ entries }) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Net P/L" value={fmtCompact(selectedMonth.profit)} sub={`${margin.toFixed(1)}% margin`} accent={selectedMonth.profit >= 0 ? "#10b981" : "#f43f5e"} icon={<DollarSign className="w-4 h-4" />} />
-        <KpiCard label="Revenue" value={fmtCompact(selectedMonth.income)} sub={`${selectedMonth.entries.length} days`} accent="#d4af37" icon={<TrendingUp className="w-4 h-4" />} />
-        <KpiCard label="Expenses" value={fmtCompact(selectedMonth.expenses)} sub="Operating" accent="#f43f5e" icon={<TrendingDown className="w-4 h-4" />} />
-        <KpiCard label="Marketing" value={fmtCompact(selectedMonth.marketing)} sub="Spend" accent="#0ea5e9" icon={<Megaphone className="w-4 h-4" />} />
+        <KpiCard label="Net P/L" value={fmt(selectedMonth.profit)} sub={`${margin.toFixed(1)}% margin`} accent={selectedMonth.profit >= 0 ? "#10b981" : "#f43f5e"} icon={<DollarSign className="w-4 h-4" />} />
+        <KpiCard label="Revenue" value={fmt(selectedMonth.income)} sub={`${selectedMonth.entries.length} days`} accent="#d4af37" icon={<TrendingUp className="w-4 h-4" />} />
+        <KpiCard label="Expenses" value={fmt(selectedMonth.expenses)} sub="Operating" accent="#f43f5e" icon={<TrendingDown className="w-4 h-4" />} />
+        <KpiCard label="Marketing" value={fmt(selectedMonth.marketing)} sub="Spend" accent="#0ea5e9" icon={<Megaphone className="w-4 h-4" />} />
       </div>
 
       {compare && (
@@ -1394,14 +1399,14 @@ function Monthly({ entries }) {
             <div>
               <div className="text-xs text-zinc-500 mb-1">Profit change</div>
               <div className={`text-lg font-bold ${compare.profitDelta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                {compare.profitDelta >= 0 ? "+" : ""}{fmtCompact(compare.profitDelta)}
+                {compare.profitDelta >= 0 ? "+" : ""}{fmt(compare.profitDelta)}
                 {compare.profitPct !== null && <span className="text-xs ml-2 text-zinc-500">({compare.profitPct >= 0 ? "+" : ""}{compare.profitPct.toFixed(1)}%)</span>}
               </div>
             </div>
             <div>
               <div className="text-xs text-zinc-500 mb-1">Revenue change</div>
               <div className={`text-lg font-bold ${compare.incomeDelta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                {compare.incomeDelta >= 0 ? "+" : ""}{fmtCompact(compare.incomeDelta)}
+                {compare.incomeDelta >= 0 ? "+" : ""}{fmt(compare.incomeDelta)}
                 {compare.incomePct !== null && <span className="text-xs ml-2 text-zinc-500">({compare.incomePct >= 0 ? "+" : ""}{compare.incomePct.toFixed(1)}%)</span>}
               </div>
             </div>
@@ -1418,7 +1423,7 @@ function Monthly({ entries }) {
             <BarChart data={dailyData}>
               <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#71717a" fontSize={11} />
-              <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtCompact} />
+              <YAxis stroke="#71717a" fontSize={11} tickFormatter={fmtAxis} />
               <Tooltip content={<DailyPLTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
               <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
                 {dailyData.map((d, i) => <Cell key={i} fill={d.profit >= 0 ? "#10b981" : "#f43f5e"} />)}
@@ -1444,13 +1449,13 @@ function Monthly({ entries }) {
                     <div className="text-xs text-zinc-500">{m.entries.length} days · {mg.toFixed(1)}% margin</div>
                   </div>
                   <div className={`text-lg font-bold ${m.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`} style={{ fontFamily: "'Playfair Display', serif" }}>
-                    {fmtCompact(m.profit)}
+                    {fmt(m.profit)}
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs mt-3">
-                  <div><span className="text-zinc-500">Rev</span><div className="text-emerald-400 font-medium">{fmtCompact(m.income)}</div></div>
-                  <div><span className="text-zinc-500">Exp</span><div className="text-rose-400 font-medium">{fmtCompact(m.expenses)}</div></div>
-                  <div><span className="text-zinc-500">Mkt</span><div className="text-sky-400 font-medium">{fmtCompact(m.marketing)}</div></div>
+                  <div><span className="text-zinc-500">Rev</span><div className="text-emerald-400 font-medium">{fmt(m.income)}</div></div>
+                  <div><span className="text-zinc-500">Exp</span><div className="text-rose-400 font-medium">{fmt(m.expenses)}</div></div>
+                  <div><span className="text-zinc-500">Mkt</span><div className="text-sky-400 font-medium">{fmt(m.marketing)}</div></div>
                 </div>
               </button>
             );
