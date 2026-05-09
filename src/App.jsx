@@ -103,11 +103,31 @@ function PasscodeScreen({ onUnlock }) {
   const [error, setError] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(!!auth.currentUser);
   const [lockedUntil, setLockedUntil] = useState(() => {
     const stored = parseInt(localStorage.getItem(LOCKOUT_KEY) || "0", 10);
     return stored > Date.now() ? stored : 0;
   });
   const [now, setNow] = useState(Date.now());
+
+  // Sign in anonymously as soon as the passcode screen mounts. Without this,
+  // we can't read the config doc (which holds the passcode) under locked-down
+  // Firestore rules. The anonymous sign-in itself doesn't grant meaningful
+  // access — the real check is still the passcode below.
+  useEffect(() => {
+    if (auth.currentUser) {
+      setAuthReady(true);
+      return;
+    }
+    let cancelled = false;
+    signInAnonymously(auth)
+      .then(() => { if (!cancelled) setAuthReady(true); })
+      .catch((err) => {
+        console.error("Anonymous sign-in failed:", err);
+        if (!cancelled) setError("Could not connect. Check Firebase Auth setup.");
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Tick every second while locked, so the countdown updates and unlocks itself when time's up
   useEffect(() => {
@@ -154,6 +174,10 @@ function PasscodeScreen({ onUnlock }) {
 
   const handleSubmit = async () => {
     if (isLocked) return;
+    if (!authReady) {
+      setError("Still connecting… please wait a moment.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -172,17 +196,8 @@ function PasscodeScreen({ onUnlock }) {
       else if (viewerPasscode && code === viewerPasscode) role = "viewer";
 
       if (role) {
-        // Passcode matched — now sign in anonymously to Firebase Auth.
-        // Without this, our locked-down Firestore rules will reject all reads/writes.
-        try {
-          await signInAnonymously(auth);
-        } catch (authErr) {
-          console.error("Auth failed:", authErr);
-          setError("Authentication failed. Please try again.");
-          setLoading(false);
-          return;
-        }
-        // Success — clear failure counter, mark unlocked, route by role
+        // We're already signed in anonymously (happened when this screen mounted).
+        // Just record the role and route into the app.
         resetAttempts();
         sessionStorage.setItem("99xbet:unlocked", "1");
         sessionStorage.setItem("99xbet:role", role);
