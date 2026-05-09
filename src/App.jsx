@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { TrendingUp, TrendingDown, DollarSign, Megaphone, Lock, LogOut, Plus, Calendar, BarChart3, FileText, Trash2, Eye, EyeOff, Sparkles, Download, Wifi, WifiOff, CalendarDays, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Loader2, X, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Megaphone, Lock, LogOut, Plus, Calendar, BarChart3, FileText, Trash2, Eye, EyeOff, Sparkles, Download, Wifi, WifiOff, CalendarDays, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Loader2, X, ArrowDownCircle, ArrowUpCircle, Users, PiggyBank, HandCoins } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, Cell } from "recharts";
 import {
   collection, doc, setDoc, deleteDoc, onSnapshot, getDoc,
@@ -14,6 +14,7 @@ const CURRENCY_CODE = "MMK";
 const CONFIG_DOC = doc(db, "config", "main");
 const ENTRIES_COL = collection(db, "entries");
 const TX_COL = collection(db, "transactions");
+const PARTNERS_COL = collection(db, "partners");
 
 // ---------- HELPERS ----------
 // Full-number currency formatter — used everywhere except chart Y-axes.
@@ -642,21 +643,27 @@ function SlipUpload({ onSave, dayMap }) {
 
 
 // ---------- ENTRY FORM ----------
-function EntryForm({ onSave, dayMap }) {
+function EntryForm({ onSave, dayMap, partners = [] }) {
   const [date, setDate] = useState(today());
   const [kind, setKind] = useState("income");
   const [amount, setAmount] = useState("");
   const [name, setName] = useState("");
   const [partner, setPartner] = useState(localStorage.getItem("99xbet:partner") || "");
+  const [partnerId, setPartnerId] = useState("");  // for capital/distribution
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const isPartnerKind = kind === "capital" || kind === "distribution";
   const day = dayMap[date];
   const amt = parseFloat(amount) || 0;
 
   const handleSave = async () => {
     if (!amount || amt <= 0 || saving) return;
+    if (isPartnerKind && !partnerId) {
+      alert("Please select which partner this " + kind + " belongs to");
+      return;
+    }
     setSaving(true);
     if (partner.trim()) localStorage.setItem("99xbet:partner", partner.trim());
 
@@ -664,24 +671,30 @@ function EntryForm({ onSave, dayMap }) {
     const time = now.toTimeString().slice(0, 5);
     const id = `${date}_${now.getTime()}_${Math.random().toString(36).slice(2, 7)}`;
 
+    // For capital/distribution, "name" field shows the selected partner's name
+    const selectedPartner = isPartnerKind ? partners.find((p) => p.id === partnerId) : null;
     const tx = {
       id,
       date,
       time,
       amount: amt,
       kind,
-      name: name.trim(),
+      name: isPartnerKind ? (selectedPartner?.name || "") : name.trim(),
       notes: notes.trim(),
       partner: partner.trim() || "—",
       source: "manual",
       timestamp: now.toISOString(),
     };
+    if (isPartnerKind) {
+      tx.partnerId = partnerId;
+    }
 
     try {
       await onSave(tx);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setAmount(""); setName(""); setNotes("");
+      // Don't reset partnerId — likely logging multiple for same partner
     } catch (e) {
       console.error(e);
       alert("Save failed: " + e.message);
@@ -693,11 +706,15 @@ function EntryForm({ onSave, dayMap }) {
     income: { label: "Income", color: "emerald", icon: <TrendingUp className="w-4 h-4" /> },
     expense: { label: "Expense", color: "rose", icon: <TrendingDown className="w-4 h-4" /> },
     marketing: { label: "Marketing", color: "sky", icon: <Megaphone className="w-4 h-4" /> },
+    capital: { label: "Capital", color: "violet", icon: <PiggyBank className="w-4 h-4" /> },
+    distribution: { label: "Distribution", color: "amber", icon: <HandCoins className="w-4 h-4" /> },
   };
   const kindActive = {
     emerald: "border-emerald-400/50 bg-emerald-400/10 text-emerald-300",
     rose: "border-rose-400/50 bg-rose-400/10 text-rose-300",
     sky: "border-sky-400/50 bg-sky-400/10 text-sky-300",
+    violet: "border-violet-400/50 bg-violet-400/10 text-violet-300",
+    amber: "border-amber-400/50 bg-amber-400/10 text-amber-300",
   };
 
   return (
@@ -729,7 +746,7 @@ function EntryForm({ onSave, dayMap }) {
 
         <div>
           <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">Type</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
             {Object.entries(kindConfig).map(([k, cfg]) => (
               <button
                 key={k}
@@ -743,6 +760,11 @@ function EntryForm({ onSave, dayMap }) {
               </button>
             ))}
           </div>
+          {isPartnerKind && partners.length === 0 && (
+            <p className="text-xs text-amber-400 mt-2">
+              No partners set up yet. Go to Settings → Partners to add them first.
+            </p>
+          )}
         </div>
 
         <div>
@@ -757,18 +779,36 @@ function EntryForm({ onSave, dayMap }) {
           />
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">
-            {kind === "income" ? "From (optional)" : "To (optional)"}
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={kind === "income" ? "Customer name" : "Vendor / recipient"}
-            className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-white outline-none focus:border-amber-400/60"
-          />
-        </div>
+        {isPartnerKind ? (
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">
+              {kind === "capital" ? "Capital from which partner" : "Distribution to which partner"}
+            </label>
+            <select
+              value={partnerId}
+              onChange={(e) => setPartnerId(e.target.value)}
+              className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-white outline-none focus:border-amber-400/60"
+            >
+              <option value="" className="bg-zinc-900">Select a partner…</option>
+              {partners.filter((p) => p.active !== false).map((p) => (
+                <option key={p.id} value={p.id} className="bg-zinc-900">{p.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 tracking-wide uppercase">
+              {kind === "income" ? "From (optional)" : "To (optional)"}
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={kind === "income" ? "Customer name" : "Vendor / recipient"}
+              className="w-full bg-black/40 border border-zinc-800 rounded-lg px-4 py-3 text-white outline-none focus:border-amber-400/60"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -1140,11 +1180,15 @@ function History({ entries, onDeleteTransaction, onDeleteLegacy, readOnly = fals
   const kindStyle = (k) =>
     k === "income" ? "text-emerald-400" :
     k === "expense" ? "text-rose-400" :
+    k === "capital" ? "text-violet-400" :
+    k === "distribution" ? "text-amber-400" :
     "text-sky-400";
 
   const kindIcon = (k) =>
     k === "income" ? <ArrowDownCircle className="w-4 h-4" /> :
     k === "expense" ? <ArrowUpCircle className="w-4 h-4" /> :
+    k === "capital" ? <PiggyBank className="w-4 h-4" /> :
+    k === "distribution" ? <HandCoins className="w-4 h-4" /> :
     <Megaphone className="w-4 h-4" />;
 
   const kindLabel = (k) => k.charAt(0).toUpperCase() + k.slice(1);
@@ -1466,8 +1510,314 @@ function Monthly({ entries }) {
   );
 }
 
-// ---------- SETTINGS ----------
-function Settings({ entries }) {
+// ---------- PARTNERS ----------
+// Calculate per-partner time-weighted profit share.
+// Rule: for each profit-generating day, divide that day's profit equally
+// among partners whose joinedDate <= that day. Partners who joined later
+// get 0 share for days before their join date.
+function calcPartnerStats(entries, transactions, partners) {
+  // Sort partners by joinedDate ascending
+  const allPartners = [...partners].sort((a, b) => (a.joinedDate || "").localeCompare(b.joinedDate || ""));
+  const activePartners = allPartners.filter((p) => p.active !== false);
+
+  // Initialize stats per partner
+  const stats = {};
+  activePartners.forEach((p) => {
+    stats[p.id] = {
+      partner: p,
+      capitalIn: 0,
+      distributionsOut: 0,
+      profitShare: 0,
+    };
+  });
+
+  // Capital and Distribution from transactions
+  transactions.forEach((t) => {
+    if (!t.partnerId || !stats[t.partnerId]) return;
+    if (t.kind === "capital") stats[t.partnerId].capitalIn += t.amount;
+    else if (t.kind === "distribution") stats[t.partnerId].distributionsOut += t.amount;
+  });
+
+  // Time-weighted profit share — per day
+  entries.forEach((day) => {
+    const eligiblePartners = activePartners.filter(
+      (p) => !p.joinedDate || p.joinedDate <= day.date
+    );
+    if (eligiblePartners.length === 0 || day.profit === 0) return;
+    const sharePerPartner = day.profit / eligiblePartners.length;
+    eligiblePartners.forEach((p) => {
+      stats[p.id].profitShare += sharePerPartner;
+    });
+  });
+
+  // Compute net position for each partner
+  Object.values(stats).forEach((s) => {
+    s.netPosition = s.capitalIn + s.profitShare - s.distributionsOut;
+  });
+
+  // Total business cash on hand
+  const totalCapital = Object.values(stats).reduce((sum, s) => sum + s.capitalIn, 0);
+  const totalDistributions = Object.values(stats).reduce((sum, s) => sum + s.distributionsOut, 0);
+  const totalProfit = entries.reduce((sum, d) => sum + d.profit, 0);
+  const cashOnHand = totalCapital + totalProfit - totalDistributions;
+
+  return {
+    perPartner: Object.values(stats),
+    totalCapital,
+    totalDistributions,
+    totalProfit,
+    cashOnHand,
+  };
+}
+
+function Partners({ entries, transactions, partners, readOnly = false }) {
+  if (partners.length === 0) {
+    return (
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-8 text-center">
+        <Users className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
+        <h3 className="text-xl font-bold text-white mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>No partners set up yet</h3>
+        <p className="text-zinc-500 text-sm mb-4">
+          {readOnly
+            ? "Ask the editor to set up partners in Settings."
+            : "Go to Settings → Partners to add partners and start tracking capital and distributions."}
+        </p>
+      </div>
+    );
+  }
+
+  const { perPartner, totalCapital, totalDistributions, totalProfit, cashOnHand } = calcPartnerStats(entries, transactions, partners);
+
+  return (
+    <div className="space-y-6">
+      {/* Top KPI strip — business-level totals */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label="Cash on Hand" value={fmt(cashOnHand)} sub="Capital + profit − distributions" accent="#d4af37" icon={<DollarSign className="w-4 h-4" />} />
+        <KpiCard label="Total Capital" value={fmt(totalCapital)} sub="Injected by partners" accent="#a78bfa" icon={<PiggyBank className="w-4 h-4" />} />
+        <KpiCard label="Total Distributions" value={fmt(totalDistributions)} sub="Taken by partners" accent="#f59e0b" icon={<HandCoins className="w-4 h-4" />} />
+        <KpiCard label="Total Profit" value={fmt(totalProfit)} sub="Business earnings" accent={totalProfit >= 0 ? "#10b981" : "#f43f5e"} icon={<TrendingUp className="w-4 h-4" />} />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>Partner Accounts</h3>
+        </div>
+        <div className="space-y-3">
+          {perPartner.map((s) => (
+            <div key={s.partner.id} className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-white font-semibold text-lg">{s.partner.name}</div>
+                  <div className="text-xs text-zinc-500">
+                    {s.partner.joinedDate ? `Joined ${s.partner.joinedDate}` : "Joined date not set"}
+                  </div>
+                </div>
+                <div className={`text-xl font-semibold tabular-nums ${s.netPosition >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  {fmt(s.netPosition)}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-zinc-800">
+                <div>
+                  <div className="text-zinc-500 mb-1">Capital In</div>
+                  <div className="text-violet-400 font-medium tabular-nums">{fmt(s.capitalIn)}</div>
+                </div>
+                <div>
+                  <div className="text-zinc-500 mb-1">Profit Share</div>
+                  <div className={`font-medium tabular-nums ${s.profitShare >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmt(s.profitShare)}</div>
+                </div>
+                <div>
+                  <div className="text-zinc-500 mb-1">Distributions</div>
+                  <div className="text-amber-400 font-medium tabular-nums">{fmt(s.distributionsOut)}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-zinc-600 mt-4 leading-relaxed">
+          Profit Share is calculated by splitting each day's business profit equally among partners
+          who had joined by that day. Net Position = Capital In + Profit Share − Distributions.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+// ---------- PARTNER MANAGER (Settings sub-component) ----------
+function PartnerManager({ partners, onSavePartner, onDeletePartner }) {
+  const [editing, setEditing] = useState(null); // partner being edited, or "new" for new
+  const [name, setName] = useState("");
+  const [joinedDate, setJoinedDate] = useState("");
+  const [working, setWorking] = useState(false);
+  const [err, setErr] = useState("");
+
+  const startNew = () => {
+    setEditing("new");
+    setName("");
+    setJoinedDate(today());
+    setErr("");
+  };
+  const startEdit = (p) => {
+    setEditing(p.id);
+    setName(p.name);
+    setJoinedDate(p.joinedDate || "");
+    setErr("");
+  };
+  const cancel = () => {
+    setEditing(null);
+    setName("");
+    setJoinedDate("");
+    setErr("");
+  };
+
+  const save = async () => {
+    setErr("");
+    const trimmed = name.trim();
+    if (!trimmed) { setErr("Name is required"); return; }
+    if (partners.some((p) => p.name.toLowerCase() === trimmed.toLowerCase() && p.id !== editing)) {
+      setErr("A partner with that name already exists");
+      return;
+    }
+    setWorking(true);
+    try {
+      if (editing === "new") {
+        const id = "partner_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+        await onSavePartner({
+          id,
+          name: trimmed,
+          joinedDate: joinedDate || today(),
+          active: true,
+          order: partners.length,
+        });
+      } else {
+        const existing = partners.find((p) => p.id === editing);
+        await onSavePartner({
+          ...existing,
+          name: trimmed,
+          joinedDate: joinedDate || existing.joinedDate || today(),
+        });
+      }
+      cancel();
+    } catch (e) {
+      setErr("Save failed: " + e.message);
+    }
+    setWorking(false);
+  };
+
+  const remove = async (p) => {
+    if (!window.confirm(`Remove ${p.name}? Their historical capital and distribution records will stay, but they won't appear in active lists.`)) return;
+    setWorking(true);
+    try {
+      // Soft remove — keep the record, mark inactive. Preserves history.
+      await onSavePartner({ ...p, active: false });
+    } catch (e) {
+      setErr("Remove failed: " + e.message);
+    }
+    setWorking(false);
+  };
+
+  const restore = async (p) => {
+    setWorking(true);
+    try {
+      await onSavePartner({ ...p, active: true });
+    } catch (e) {
+      setErr("Restore failed: " + e.message);
+    }
+    setWorking(false);
+  };
+
+  const activePartners = partners.filter((p) => p.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const inactivePartners = partners.filter((p) => p.active === false);
+
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 md:p-8 max-w-xl">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>Partners</h3>
+        <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20">
+          {activePartners.length} active
+        </span>
+      </div>
+      <p className="text-xs text-zinc-500 mb-6">
+        Capital and distribution transactions are attributed to specific partners. Profit share is split equally among partners who had joined by each profit-generating day.
+      </p>
+
+      {activePartners.length === 0 && editing === null && (
+        <div className="text-center py-6">
+          <Users className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+          <p className="text-sm text-zinc-500 mb-4">No partners yet. Add your first partner to start tracking.</p>
+        </div>
+      )}
+
+      <div className="space-y-2 mb-4">
+        {activePartners.map((p) => (
+          <div key={p.id} className="flex items-center justify-between bg-black/30 border border-zinc-800 rounded-lg px-4 py-3">
+            <div>
+              <div className="text-white font-medium">{p.name}</div>
+              <div className="text-xs text-zinc-500">{p.joinedDate ? `Joined ${p.joinedDate}` : "—"}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => startEdit(p)} className="text-xs text-zinc-400 hover:text-white px-2 py-1">Edit</button>
+              <button onClick={() => remove(p)} className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1">Remove</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {editing && (
+        <div className="bg-black/30 border border-amber-400/30 rounded-lg p-4 mb-4 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1 uppercase tracking-wide">Partner Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Paul"
+              className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2 text-white outline-none focus:border-amber-400/60"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1 uppercase tracking-wide">Joined Date</label>
+            <input
+              type="date" lang="en-US"
+              value={joinedDate}
+              onChange={(e) => setJoinedDate(e.target.value)}
+              className="w-full bg-black/40 border border-zinc-800 rounded-lg px-3 py-2 text-white outline-none focus:border-amber-400/60"
+            />
+            <p className="text-xs text-zinc-500 mt-1">Approximate is fine — used to calculate profit share starting from this date.</p>
+          </div>
+          {err && <p className="text-rose-400 text-sm">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={save} disabled={working} className="px-4 py-2 rounded-lg font-medium text-black text-sm disabled:opacity-50" style={{ background: "linear-gradient(135deg, #d4af37 0%, #f4d65f 100%)" }}>
+              {working ? "Saving…" : "Save"}
+            </button>
+            <button onClick={cancel} className="px-4 py-2 rounded-lg text-zinc-400 text-sm hover:text-white">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {!editing && (
+        <button onClick={startNew} className="w-full py-3 rounded-lg border-2 border-dashed border-zinc-700 hover:border-amber-400/60 text-zinc-400 hover:text-amber-300 text-sm font-medium transition flex items-center justify-center gap-2">
+          <Plus className="w-4 h-4" /> Add Partner
+        </button>
+      )}
+
+      {inactivePartners.length > 0 && (
+        <div className="mt-6 pt-6 border-t border-zinc-800">
+          <h4 className="text-xs uppercase tracking-wide text-zinc-500 font-semibold mb-3">Inactive ({inactivePartners.length})</h4>
+          <div className="space-y-2">
+            {inactivePartners.map((p) => (
+              <div key={p.id} className="flex items-center justify-between bg-black/20 border border-zinc-800 rounded-lg px-4 py-2">
+                <div className="text-zinc-500 text-sm">{p.name}</div>
+                <button onClick={() => restore(p)} className="text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1">Restore</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Settings({ entries, partners, onSavePartner, onDeletePartner }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -1656,6 +2006,8 @@ function Settings({ entries }) {
         </div>
       </div>
 
+      <PartnerManager partners={partners} onSavePartner={onSavePartner} onDeletePartner={onDeletePartner} />
+
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 md:p-8 max-w-xl">
         <h3 className="text-xl font-bold text-white mb-1" style={{ fontFamily: "'Playfair Display', serif" }}>Export Data</h3>
         <p className="text-xs text-zinc-500 mb-6">Download a CSV of the full ledger (daily totals).</p>
@@ -1675,6 +2027,7 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [legacyEntries, setLegacyEntries] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [partners, setPartners] = useState([]);
   // Viewers default to dashboard; editors keep "entry" as default
   const [tab, setTab] = useState(() =>
     sessionStorage.getItem("99xbet:role") === "viewer" ? "dashboard" : "entry"
@@ -1717,8 +2070,8 @@ export default function App() {
     // Need both: passcode-unlocked AND Firebase-authenticated
     if (!unlocked || !authUser) return;
     setLoading(true);
-    let entriesLoaded = false, txLoaded = false;
-    const checkDone = () => { if (entriesLoaded && txLoaded) setLoading(false); };
+    let entriesLoaded = false, txLoaded = false, partnersLoaded = false;
+    const checkDone = () => { if (entriesLoaded && txLoaded && partnersLoaded) setLoading(false); };
 
     const unsub1 = onSnapshot(
       ENTRIES_COL,
@@ -1750,7 +2103,22 @@ export default function App() {
         checkDone();
       }
     );
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = onSnapshot(
+      PARTNERS_COL,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => list.push(d.data()));
+        setPartners(list);
+        partnersLoaded = true;
+        checkDone();
+      },
+      (err) => {
+        console.error("Firestore partners error:", err);
+        partnersLoaded = true;
+        checkDone();
+      }
+    );
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [unlocked, authUser]);
 
   // Save a single transaction (the new way)
@@ -1765,6 +2133,14 @@ export default function App() {
   // Delete an entire legacy daily entry
   const deleteLegacyEntry = async (id) => {
     await deleteDoc(doc(db, "entries", id));
+  };
+
+  // Partner CRUD
+  const savePartner = async (partner) => {
+    await setDoc(doc(db, "partners", partner.id), partner);
+  };
+  const deletePartner = async (id) => {
+    await deleteDoc(doc(db, "partners", id));
   };
 
   const handleLock = async () => {
@@ -1836,6 +2212,7 @@ export default function App() {
             { id: "upload", label: "Upload Slips", icon: <Upload className="w-4 h-4" />, editorOnly: true },
             { id: "dashboard", label: "Dashboard", icon: <BarChart3 className="w-4 h-4" /> },
             { id: "monthly", label: "Monthly", icon: <CalendarDays className="w-4 h-4" /> },
+            { id: "partners", label: "Partners", icon: <Users className="w-4 h-4" /> },
             { id: "history", label: "History", icon: <FileText className="w-4 h-4" /> },
             { id: "settings", label: "Settings", icon: <Lock className="w-4 h-4" />, editorOnly: true },
           ]
@@ -1860,12 +2237,13 @@ export default function App() {
           <div className="text-center py-20 text-zinc-500">Connecting to Firebase…</div>
         ) : (
           <>
-            {tab === "entry" && !isViewer && <EntryForm onSave={saveTransaction} dayMap={dayMap} />}
+            {tab === "entry" && !isViewer && <EntryForm onSave={saveTransaction} dayMap={dayMap} partners={partners} />}
             {tab === "upload" && !isViewer && <SlipUpload onSave={saveTransaction} dayMap={dayMap} />}
             {tab === "dashboard" && <Dashboard entries={entries} />}
             {tab === "monthly" && <Monthly entries={entries} />}
+            {tab === "partners" && <Partners entries={entries} transactions={transactions} partners={partners} readOnly={isViewer} />}
             {tab === "history" && <History entries={entries} onDeleteTransaction={deleteTransaction} onDeleteLegacy={deleteLegacyEntry} readOnly={isViewer} />}
-            {tab === "settings" && !isViewer && <Settings entries={entries} />}
+            {tab === "settings" && !isViewer && <Settings entries={entries} partners={partners} onSavePartner={savePartner} onDeletePartner={deletePartner} />}
           </>
         )}
 
