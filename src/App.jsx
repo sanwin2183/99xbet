@@ -1354,25 +1354,59 @@ function History({ entries, onDeleteTransaction, onDeleteLegacy, readOnly = fals
                   <div className="flex items-center gap-3 min-w-0">
                     <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform flex-shrink-0 ${isOpen ? "rotate-90" : ""}`} />
                     <div className="min-w-0">
-                      <div className="text-white font-semibold">{day.date}</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-white font-semibold">{day.date}</span>
+                        {day.transactions.some(t => t.kind === "capital") && (
+                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-400/10 text-violet-400 border border-violet-400/20 flex items-center gap-1">
+                            <PiggyBank className="w-2.5 h-2.5" /> Capital
+                          </span>
+                        )}
+                        {day.transactions.some(t => t.kind === "distribution") && (
+                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center gap-1">
+                            <HandCoins className="w-2.5 h-2.5" /> Distribution
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-zinc-500">
                         {isLegacy ? "Imported summary" : `${txCount} transaction${txCount !== 1 ? "s" : ""}`}
                       </div>
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div className={`text-lg md:text-xl font-semibold tabular-nums ${day.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                      {fmt(day.profit)}
-                    </div>
+                    {(day.income > 0 || day.expenses > 0 || day.marketing > 0) ? (
+                      <div className={`text-lg md:text-xl font-semibold tabular-nums ${day.profit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {fmt(day.profit)}
+                      </div>
+                    ) : (
+                      // Pure capital/distribution day — show those amounts instead of zero profit
+                      <>
+                        {day.transactions.filter(t => t.kind === "capital").length > 0 && (
+                          <div className="text-lg md:text-xl font-semibold tabular-nums text-violet-400">
+                            +{fmt(day.transactions.filter(t => t.kind === "capital").reduce((s,t) => s + t.amount, 0))}
+                          </div>
+                        )}
+                        {day.transactions.filter(t => t.kind === "distribution").length > 0 && (
+                          <div className="text-lg md:text-xl font-semibold tabular-nums text-amber-400">
+                            −{fmt(day.transactions.filter(t => t.kind === "distribution").reduce((s,t) => s + t.amount, 0))}
+                          </div>
+                        )}
+                      </>
+                    )}
                     <div className="text-xs text-zinc-500 tabular-nums">
-                      <span className="text-emerald-400">{fmt(day.income)}</span>
-                      <span className="mx-1">·</span>
-                      <span className="text-rose-400">{fmt(day.expenses)}</span>
-                      {day.marketing > 0 && (
+                      {(day.income > 0 || day.expenses > 0 || day.marketing > 0) ? (
                         <>
+                          <span className="text-emerald-400">{fmt(day.income)}</span>
                           <span className="mx-1">·</span>
-                          <span className="text-sky-400">{fmt(day.marketing)}</span>
+                          <span className="text-rose-400">{fmt(day.expenses)}</span>
+                          {day.marketing > 0 && (
+                            <>
+                              <span className="mx-1">·</span>
+                              <span className="text-sky-400">{fmt(day.marketing)}</span>
+                            </>
+                          )}
                         </>
+                      ) : (
+                        <span className="text-zinc-500">Capital/distribution day</span>
                       )}
                     </div>
                   </div>
