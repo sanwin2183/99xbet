@@ -84,6 +84,10 @@ function buildDayMap(legacyEntries, transactions) {
       // by default. They can be retro-tagged if needed via direct edit.
       fixedExpenses: 0,
       variableExpenses: e.expenses || 0,
+      // Shared expenses are absorbed by all current partners equally,
+      // not by partners-active-on-that-day. Used for startup/setup costs.
+      sharedExpenses: 0,
+      regularExpenses: e.expenses || 0,
       marketing: e.marketing || 0,
       profit: 0,
       partner: e.partner || "—",
@@ -102,6 +106,8 @@ function buildDayMap(legacyEntries, transactions) {
         expenses: 0,
         fixedExpenses: 0,
         variableExpenses: 0,
+        sharedExpenses: 0,
+        regularExpenses: 0,
         marketing: 0,
         profit: 0,
         partner: t.partner || "—",
@@ -116,6 +122,9 @@ function buildDayMap(legacyEntries, transactions) {
       // Default to variable if not tagged (back-compat with old expense records)
       if (t.category === "fixed") map[t.date].fixedExpenses += t.amount;
       else map[t.date].variableExpenses += t.amount;
+      // Shared vs regular for partner attribution
+      if (t.shared === true) map[t.date].sharedExpenses += t.amount;
+      else map[t.date].regularExpenses += t.amount;
     }
     else if (t.kind === "marketing") map[t.date].marketing += t.amount;
     map[t.date].transactions.push(t);
@@ -685,6 +694,7 @@ function EntryForm({ onSave, dayMap, partners = [] }) {
   const [partner, setPartner] = useState(localStorage.getItem("99xbet:partner") || "");
   const [partnerId, setPartnerId] = useState("");  // for capital/distribution
   const [expenseCategory, setExpenseCategory] = useState("variable"); // "fixed" or "variable"
+  const [expenseShared, setExpenseShared] = useState(false); // shared by all current partners?
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -726,6 +736,7 @@ function EntryForm({ onSave, dayMap, partners = [] }) {
     // Tag expense transactions as fixed or variable for break-even reporting
     if (kind === "expense") {
       tx.category = expenseCategory;
+      if (expenseShared) tx.shared = true;
     }
 
     try {
@@ -733,6 +744,7 @@ function EntryForm({ onSave, dayMap, partners = [] }) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setAmount(""); setName(""); setNotes("");
+      setExpenseShared(false); // reset — should be opt-in per transaction
       // Don't reset partnerId — likely logging multiple for same partner
     } catch (e) {
       console.error(e);
@@ -834,6 +846,21 @@ function EntryForm({ onSave, dayMap, partners = [] }) {
             <p className="text-xs text-zinc-500 mt-1">
               Fixed = recurring monthly costs (server, salaries). Variable = one-off purchases.
             </p>
+
+            <label className="mt-3 flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-zinc-800 hover:border-amber-400/40 transition">
+              <input
+                type="checkbox"
+                checked={expenseShared}
+                onChange={(e) => setExpenseShared(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-amber-400 cursor-pointer"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-white">Shared by all partners</div>
+                <div className="text-xs text-zinc-500 mt-0.5">
+                  Use for startup costs (equipment, licenses) that benefit everyone. Cost splits equally among all current partners regardless of join date. Leave unchecked for normal operating expenses.
+                </div>
+              </div>
+            </label>
           </div>
         )}
 
@@ -1384,6 +1411,11 @@ function History({ entries, onDeleteTransaction, onDeleteLegacy, readOnly = fals
                                   {tx.kind === "expense" && tx.category === "fixed" && (
                                     <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-400/10 text-violet-400 border border-violet-400/20">Fixed</span>
                                   )}
+                                  {tx.kind === "expense" && tx.shared === true && (
+                                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 flex items-center gap-1">
+                                      <Users className="w-2.5 h-2.5" /> Shared
+                                    </span>
+                                  )}
                                   {tx.source === "slip" && <span className="text-[10px] uppercase tracking-wider text-amber-400/80">Slip</span>}
                                   {tx.source === "recurring" && (
                                     <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-400/10 text-sky-400 border border-sky-400/20 flex items-center gap-1">
@@ -1607,7 +1639,8 @@ function calcPartnerStats(entries, transactions, partners) {
       partner: p,
       capitalIn: 0,
       distributionsOut: 0,
-      profitShare: 0,
+      profitShare: 0,        // operational profit, time-weighted by join date
+      sharedExpenseShare: 0, // share of expenses flagged as "shared by all partners"
     };
   });
 
@@ -1618,21 +1651,38 @@ function calcPartnerStats(entries, transactions, partners) {
     else if (t.kind === "distribution") stats[t.partnerId].distributionsOut += t.amount;
   });
 
-  // Time-weighted profit share — per day
+  // Time-weighted profit share — per day, OPERATIONAL profit only.
+  // Shared expenses (e.g. startup costs flagged as shared) are excluded
+  // from this and split equally among ALL currently-active partners below.
   entries.forEach((day) => {
     const eligiblePartners = activePartners.filter(
       (p) => !p.joinedDate || p.joinedDate <= day.date
     );
-    if (eligiblePartners.length === 0 || day.profit === 0) return;
-    const sharePerPartner = day.profit / eligiblePartners.length;
+    if (eligiblePartners.length === 0) return;
+    // Operational profit excludes shared expenses
+    const sharedToday = day.sharedExpenses || 0;
+    const operationalProfit = day.profit + sharedToday; // add back shared exp that was already subtracted
+    if (operationalProfit === 0) return;
+    const sharePerPartner = operationalProfit / eligiblePartners.length;
     eligiblePartners.forEach((p) => {
       stats[p.id].profitShare += sharePerPartner;
     });
   });
 
+  // Shared expenses split equally among ALL currently-active partners
+  // regardless of join date. This is for one-off startup costs that
+  // benefit the business as an asset rather than burn away as opex.
+  const totalSharedExpenses = entries.reduce((sum, d) => sum + (d.sharedExpenses || 0), 0);
+  if (activePartners.length > 0 && totalSharedExpenses > 0) {
+    const sharePerPartner = totalSharedExpenses / activePartners.length;
+    activePartners.forEach((p) => {
+      stats[p.id].sharedExpenseShare = sharePerPartner;
+    });
+  }
+
   // Compute net position for each partner
   Object.values(stats).forEach((s) => {
-    s.netPosition = s.capitalIn + s.profitShare - s.distributionsOut;
+    s.netPosition = s.capitalIn + s.profitShare - s.sharedExpenseShare - s.distributionsOut;
   });
 
   // Total business cash on hand
@@ -1646,6 +1696,7 @@ function calcPartnerStats(entries, transactions, partners) {
     totalCapital,
     totalDistributions,
     totalProfit,
+    totalSharedExpenses,
     cashOnHand,
   };
 }
@@ -1665,7 +1716,8 @@ function Partners({ entries, transactions, partners, readOnly = false }) {
     );
   }
 
-  const { perPartner, totalCapital, totalDistributions, totalProfit, cashOnHand } = calcPartnerStats(entries, transactions, partners);
+  const { perPartner, totalCapital, totalDistributions, totalProfit, totalSharedExpenses, cashOnHand } = calcPartnerStats(entries, transactions, partners);
+  const hasShared = totalSharedExpenses > 0;
 
   return (
     <div className="space-y-6">
@@ -1695,7 +1747,7 @@ function Partners({ entries, transactions, partners, readOnly = false }) {
                   {fmt(s.netPosition)}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-zinc-800">
+              <div className={`grid ${hasShared ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3"} gap-2 text-xs pt-3 border-t border-zinc-800`}>
                 <div>
                   <div className="text-zinc-500 mb-1">Capital In</div>
                   <div className="text-violet-400 font-medium tabular-nums">{fmt(s.capitalIn)}</div>
@@ -1704,6 +1756,12 @@ function Partners({ entries, transactions, partners, readOnly = false }) {
                   <div className="text-zinc-500 mb-1">Profit Share</div>
                   <div className={`font-medium tabular-nums ${s.profitShare >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmt(s.profitShare)}</div>
                 </div>
+                {hasShared && (
+                  <div>
+                    <div className="text-zinc-500 mb-1">Shared Costs</div>
+                    <div className="text-rose-400 font-medium tabular-nums">−{fmt(s.sharedExpenseShare)}</div>
+                  </div>
+                )}
                 <div>
                   <div className="text-zinc-500 mb-1">Distributions</div>
                   <div className="text-amber-400 font-medium tabular-nums">{fmt(s.distributionsOut)}</div>
@@ -1713,8 +1771,9 @@ function Partners({ entries, transactions, partners, readOnly = false }) {
           ))}
         </div>
         <p className="text-xs text-zinc-600 mt-4 leading-relaxed">
-          Profit Share is calculated by splitting each day's business profit equally among partners
-          who had joined by that day. Net Position = Capital In + Profit Share − Distributions.
+          Profit Share is calculated by splitting each day's <em>operational</em> profit equally among partners
+          who had joined by that day. {hasShared && "Shared Costs are startup expenses split equally among all current partners regardless of join date. "}
+          Net Position = Capital In + Profit Share {hasShared && "− Shared Costs "}− Distributions.
         </p>
       </div>
     </div>
